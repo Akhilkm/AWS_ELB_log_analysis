@@ -1,6 +1,13 @@
+##########################################################################################
+#                         Python script to parse elb logs and find                       #
+#				urls causing 4xx/5xx errrors                             #  
+##########################################################################################
+
+
 import boto3
 import time
-import datetime
+import os
+import pprint
 
 
 #function to select customer and returns cross account arn associates with client
@@ -50,7 +57,7 @@ def get_elb(client):
 		print str(i) + ". " + elb['LoadBalancerName']
 		i += 1
 		values.append(elb['LoadBalancerName'])
-	no = int(raw_input("Enter region Number: "))
+	no = int(raw_input("Enter ELB Number: "))
 	if no not in range(1, len(values)+1):
         	print "Invalid option"
  		exit()
@@ -63,14 +70,52 @@ def get_elb(client):
                 return [access_log['S3BucketName'],access_log['S3BucketPrefix'], values[no-1]]
         else:
                 exit()
-#function to get s3 location
-def log_data(client, s3_name, s3_prefix, account_id,region):
-	start_time = time.time()
-	end_time = time.time() - 43200
-	
-	log_path1 =
-	log_path2 = 
-	objects =  client.list_objects(Bucket=s3_name,Prefix=s3_prefix)
+#sub function to find list of s3 objects which got modified for last 2 hours
+def s3_objects(client, s3_name, log_prefix, elb_name):
+	s3_keys = []
+	marker = ''
+	while True:
+		objects = client.list_objects(Bucket=s3_name, Prefix = log_prefix ,Marker = marker)
+		for object in objects['Contents']:
+			if object['LastModified'].strftime('%Y%m%d%H%M%S') >= time.strftime("%Y%m%d%H%M%S", time.gmtime(time.time()-7200)) and object['Key'].split('_')[3] == elb_name:
+				s3_keys.append(object['Key'])
+			marker = object['Key']
+		if objects['IsTruncated']  == False:
+			break
+	return s3_keys
+#function to get s3 file locations which got modified for last 2 hours
+def log_files(client, s3_name, s3_prefix, account_id,region, elb_name):
+	year1 = time.strftime("%Y", time.gmtime(time.time()))
+	month1 = time.strftime("%m", time.gmtime(time.time()))
+	date1 = time.strftime("%d", time.gmtime(time.time()))
+        year2 = time.strftime("%Y", time.gmtime(time.time()-7200))
+        month2 = time.strftime("%m", time.gmtime(time.time()-7200))
+        date2 = time.strftime("%d", time.gmtime(time.time()-7200))
+	if s3_prefix:
+		log_prefix1 = s3_prefix+'/AWSLogs/'+account_id+'/elasticloadbalancing/'+region+'/'+year1+'/'+month1+'/'+date1+'/'
+		log_prefix2 = s3_prefix+'/AWSLogs/'+account_id+'/elasticloadbalancing/'+region+'/'+year2+'/'+month2+'/'+date2+'/'
+	else:
+		log_prefix1 = 'AWSLogs/'+account_id+'/elasticloadbalancing/'+region+'/'+year1+'/'+month1+'/'+date1+'/'
+		log_prefix2 = 'AWSLogs/'+account_id+'/elasticloadbalancing/'+region+'/'+year2+'/'+month2+'/'+date2+'/'
+	s3_keys = []
+	if log_prefix1 == log_prefix2:
+		s3_keys = s3_objects(client, s3_name, log_prefix1, elb_name)
+	else:
+		s3_keys = s3_objects(client, s3_name, log_prefix1, elb_name) + s3_objects(client, s3_name, log_prefix2, elb_name)
+	return s3_keys
+#function to downlod s3 logs to a file
+def get_logs(client, s3_name, s3_keys, elb_name):
+	logs = []
+	for key in s3_keys:
+		with open('file.log', 'ab') as data:
+			client.download_fileobj(s3_name , key, data)
+	with open('file.log','rb') as data:
+		for line in data:
+			temp = line.split(" ")
+			if temp[0].split('T')[0] + ' '+ temp[0].split('T')[1].replace("Z","") > time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(time.time()-7200)) and elb_name == temp[1]:
+				logs.append(line)
+	os.remove('file.log')
+	return logs
 #main function
 cross_role = select_client(boto3.client('dynamodb','us-west-2'))
 account_id = cross_role.split(':')[4]
@@ -81,10 +126,7 @@ secret_key = assume_role['Credentials']['SecretAccessKey']
 session_token = assume_role['Credentials']['SessionToken']
 client = boto3.client('elb',region_name=region,aws_access_key_id=access_key,aws_secret_access_key=secret_key,aws_session_token=session_token)
 log_location = get_elb(client)
-print log_location
-
-
-
-
-
-
+client = boto3.client('s3', aws_access_key_id=access_key,aws_secret_access_key=secret_key,aws_session_token=session_token)
+s3_keys = log_files(client, log_location[0], log_location[1], account_id, region, log_location[2])
+logs = get_logs(client, log_location[0], s3_keys, log_location[2])
+print logs
