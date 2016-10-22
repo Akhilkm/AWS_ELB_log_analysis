@@ -1,13 +1,14 @@
 ##########################################################################################
 #                         Python script to parse elb logs and find                       #
-#				urls causing 4xx/5xx errrors                             #  
+#				urls causing 4xx/5xx errrors                             #
+#                                     Version 1.0.0                                      #
 ##########################################################################################
+
 
 
 import boto3
 import time
 import os
-from operator import itemgetter
 import re
 import calendar
 
@@ -125,6 +126,9 @@ def log_files(client, s3_name, s3_prefix, account_id,region, elb_name):
 	s3_keys = []
 	for i in log_prefix:
 		s3_keys += s3_objects(client, s3_name, i, elb_name,start, end)
+	if len(s3_keys) == 0:
+		print "There are no logs for the time you specified"
+		exit()
 	return [s3_keys, start, end]
 #function to downlod s3 logs to a file
 def get_logs(client, s3_name, s3_keys, elb_name, start, end):
@@ -209,12 +213,26 @@ def list_5xx(logs):
                         if temp[2].split(":")[0] == client_ip:
                                 count += 1
                 last.append([client_ip, str(count)])
-        sort_last = sorted(last, key=lambda x: (int(x[1]), x[0]), reverse=True)
+	sort_last = sorted(last, key=lambda x: (int(x[1]), x[0]), reverse=True)
         print "Sl_No\tClient_Ip\tCount"
         for i in sort_last:
                 sl_no +=1
                 print str(sl_no) +'\t'+i[0] +'\t'+i[1]
-
+#function to print logs with following fields.
+#Sl_no, request_time, back_time, resp_time
+def list_latency(logs):
+	sl_no = 0
+	latency = []
+	f = open("output.txt",'w')
+	for log in logs:
+		temp = log.split(" ")
+		if float(temp[5]) > 2.0:
+			latency.append([temp[0],temp[1],temp[2].split(":")[0],temp[4],temp[5],temp[6],temp[7],temp[11]+' '+temp[12]+' '+temp[13]])
+	sort_last = sorted(latency, key=lambda x: (float(x[4])), reverse=True)
+	for last in sort_last:
+		f.write(last[0]+','+last[1]+','+last[2]+','+last[3]+','+last[4]+','+last[5]+','+last[6]+','+last[7]+'\n')
+	f.close()		
+	
 
 
 ################################################################################
@@ -239,3 +257,4 @@ logs = get_logs(client, log_location[0], s3_keys[0], log_location[2], s3_keys[1]
 
 list_4xx(logs)
 list_5xx(logs)
+list_latency(logs)
