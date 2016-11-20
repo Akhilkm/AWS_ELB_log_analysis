@@ -11,6 +11,21 @@ import time
 import os
 import re
 import calendar
+import optparse
+
+
+
+###########################################################
+#  Passing paramerts to the code                          # 
+###########################################################
+
+parser = optparse.OptionParser(version = 'elb-log-analysis 1.0.0')
+parser.add_option('-t','--time',dest = 'spec_time', type ='float', help = 'Specify time in hours, fetch logs for last specified hours')
+parser.add_option('-o','--output', dest = 'output_file', type ='string', help = 'Specify the output file name(avoid this option will print the output in cosole)')
+parser.add_option('-r','--result', dest = 'result', type='string', help = 'Specify the type of result latency 4xx 5xx')
+
+(options, args) = parser.parse_args()
+
 
 
 
@@ -117,8 +132,12 @@ def log_path(path, start, end):
 	return prefix
 #function to get s3 file locations which got modified for last 2 hours
 def log_files(client, s3_name, s3_prefix, account_id,region, elb_name):
-	start = raw_input("Enter start date(YYYY/mm/dd HH:MM:SS) in UST: ")
-	end = raw_input("Enter end date(YYYY/mm/dd HH:MM:SS) in UST: ")
+	if options.spec_time == None:
+		start = raw_input("Enter start date(YYYY/mm/dd HH:MM:SS) in UST: ")
+		end = raw_input("Enter end date(YYYY/mm/dd HH:MM:SS) in UST: ")
+	else:
+		start = time.strftime('%Y/%m/%d %H:%M:%S', time.gmtime(time.time()-3600*options.spec_time))
+		end = time.strftime('%Y/%m/%d %H:%M:%S', time.gmtime(time.time()))
 	if s3_prefix:
 		log_prefix = log_path(s3_prefix+'/AWSLogs/'+account_id+'/elasticloadbalancing/'+region+'/', start, end)
 	else:
@@ -130,7 +149,7 @@ def log_files(client, s3_name, s3_prefix, account_id,region, elb_name):
 		print "There are no logs for the time you specified"
 		exit()
 	return [s3_keys, start, end]
-#function to downlod s3 logs to a file
+#function to downlod s3 logs to a file and will return logs as a list
 def get_logs(client, s3_name, s3_keys, elb_name, start, end):
 	logs = []
 	if len(s3_keys) == 0:
@@ -227,10 +246,12 @@ def list_latency(logs):
 	for log in logs:
 		temp = log.split(" ")
 		if float(temp[5]) > 2.0:
-			latency.append([temp[0],temp[1],temp[2].split(":")[0],temp[4],temp[5],temp[6],temp[7],temp[11]+' '+temp[12]+' '+temp[13]])
+			source = temp[14] + ' ' + temp[15]+' '+temp[16]+' '+temp[17]
+			source = source.partition('"')[-1].rpartition('"')[0]
+			latency.append([temp[0],temp[1],temp[2].split(":")[0],temp[4],temp[5],temp[6],temp[7],temp[11]+' '+temp[12]+' '+temp[13]],source)
 	sort_last = sorted(latency, key=lambda x: (float(x[4])), reverse=True)
 	for last in sort_last:
-		f.write(last[0]+','+last[1]+','+last[2]+','+last[3]+','+last[4]+','+last[5]+','+last[6]+','+last[7]+'\n')
+		f.write(last[0]+','+last[1]+','+last[2]+','+last[3]+','+last[4]+','+last[5]+','+last[6]+','+last[7]+last[8]+'\n')
 	f.close()		
 	
 
@@ -253,8 +274,18 @@ client = boto3.client('s3', aws_access_key_id=access_key,aws_secret_access_key=s
 s3_keys = log_files(client, log_location[0], log_location[1], account_id, region, log_location[2])
 logs = get_logs(client, log_location[0], s3_keys[0], log_location[2], s3_keys[1], s3_keys[2])
 
-#parsing elb logs for the time specified
 
 list_4xx(logs)
 list_5xx(logs)
-list_latency(logs)
+#parsing elb logs for the time specified
+#if options.result == '4xx':
+#	list_4xx(logs)
+#elif options.result == '5xx':
+#	list_5xx(logs)
+#elif options.result == 'latency':
+#	list_latency(logs)
+#elif options.result == 'custom'
+#	if options.
+
+#else:
+#	exit()
