@@ -1,6 +1,3 @@
-#!/usr/bin/python
-
-
 ##########################################################################################
 #                         Python script to parse elb logs and find                       #
 #				urls causing 4xx/5xx errrors                             #
@@ -15,8 +12,11 @@ import os
 import re
 import calendar
 import optparse
+import requests
 
 
+
+working_dir = os.getcwd()+'/'
 
 ###########################################################
 #  Passing paramerts to the code                          # 
@@ -25,7 +25,7 @@ import optparse
 parser = optparse.OptionParser(version = 'elb-log-analysis 1.0.0')
 parser.add_option('-t','--time',dest = 'spec_time', type ='float', help = 'Specify time in hours, fetch logs for last specified hours')
 parser.add_option('-o','--output', dest = 'output_file', type ='string', help = 'Specify the output file name(avoid this option will print the output in cosole)')
-parser.add_option('-r','--result', dest = 'result', type='string',default='latency', help = 'Specify the type of result latency 4xx 5xx source_5xx source_4xx all')
+parser.add_option('-r','--result', dest = 'result', type='string',default='latency', help = 'Specify the type of result latency 4xx 5xx source_5xx source_4xx source_3xx source_2xx invalid all')
 parser.add_option('-c','--custom', dest = 'custom', type='string', help = 'Specify the custom columns separated by coma')
 
 (options, args) = parser.parse_args()
@@ -160,6 +160,8 @@ def get_logs(client, s3_name, s3_keys, elb_name, start, end):
 	logs = []
 	if len(s3_keys) == 0:
 		print "No logs are generated during the time frame"
+	if os.path.isfile("file.log"):
+		os.remove("file.log")
 	for key in s3_keys:
 		with open('file.log', 'ab') as data:
 			client.download_fileobj(s3_name , key, data)
@@ -230,33 +232,37 @@ def list_all_fields(logs):
 
 #function to print logs with followting fields.
 #sl_no, source_ip, count_4xx group by sourceip and and sort by count
-def parameter_4xx(logs):
-	sl_no = 0
-	pattern = re.compile("4[0-9][0-9]")
-	client_ips = []
-	logs_4xx = []
+def list_statuscode(logs, pattern):
+        logs_xx = []
 	for log in logs:
-		temp = log.split(" ")
-		if pattern.match(temp[7]):
-			client_ips.append(log.split(" ")[2].split(":")[0])
-			logs_4xx.append(log)
-	client_ips = list(set(client_ips))
-	last = []
-	for client_ip in client_ips:
-		count = 0
-		for log_4xx in logs_4xx:
-			temp = log_4xx.split(" ")
-			if temp[2].split(":")[0] == client_ip:
-				count += 1
-		last.append([client_ip, str(count)])
-	sort_last = sorted(last, key=lambda x: (int(x[1]), x[0]), reverse=True)
-	print "Sl_No\tClient_Ip\tCount"
-	for i in sort_last:
-		sl_no +=1
-		print str(sl_no) +'\t'+i[0] +'\t'+i[1]
+                temp = log.split(" ")
+                client_ip = temp[2].split(":")[0]
+                logs_xx.append([client_ip, temp[7]])
+        last = sorted(code_group(logs_xx, 1, 2, pattern), key=lambda x: (int(x[2]), x[0]), reverse=True)
+	output = []
+	for i in last:
+		country = '-'
+		org = '-'
+		try:
+			a = requests.get('http://ipinfo.io/'+i[0]).json()
+			country = a['country']
+			org = a['org']
+		except:
+			pass
+		i.append(country)
+		i.append(org)
+		output.append(i)
+        if options.output_file == None:
+                print "Client_IP\tElb_status_code\tCount\tCountry_Code\tOrganisation"
+                for i in output:
+                        print i[0]+'\t'+i[1]+'\t'+str(i[2])+'\t'+i[3]+'\t'+i[4]
+        else:
+                with open(working_dir+options.output_file, "w") as f:
+                        f.write("Client_IP,Elb_staus_code,Count,Country_code,Organisation\n")
+                        for i in output:
+                                f.write(i[0]+','+i[1]+','+str(i[2])+','+i[3]+','+i[4]+'\n')
 
 
-#function to print logs with followting fields.
 #sl_no, source_ip, count_4xx group by sourceip and and sort by count
 def parameter_4xx(logs):
         pattern = re.compile("4[0-9][0-9]")
@@ -268,40 +274,12 @@ def parameter_4xx(logs):
         if options.output_file == None:
                 print "Request_Url\tRequest_Processing_Time\tBackend_Processing_Time\tResponse_Processing_Time\tELB_Status_Code\tCount"
                 for i in output:
-                        print i[0]+'\t'+str(i[1])+'\t'+str(i[2])+'\t'+str(i[3])+'\t'+i[4]+'\t'+str(i[5])+'\t'
+                        print i[0]+'\t'+str(i[1])+'\t'+str(i[2])+'\t'+str(i[3])+'\t'+i[4]+'\t'+str(i[5])
         else:
-                with open(options.output_file, "a") as f:
+                with open(working_dir+options.output_file, "w") as f:
                         f.write("Request_Url,Request_Processing_Time,Backend_Processing_Time,Response_Processing_Time,ELB_Status_Code,Count\n")
                         for i in output:
                                 f.write(i[0]+','+str(i[1])+','+str(i[2])+','+str(i[3])+','+i[4]+','+str(i[5])+'\n')
-
-
-#function to print logs with followting fields.
-#sl_no, source_ip, count_5xx group by sourceip and and sort by count
-def list_5xx(logs):
-        sl_no = 0
-        pattern = re.compile("5[0-9][0-9]")
-        client_ips = []
-        logs_5xx = []
-        for log in logs:
-                temp = log.split(" ")
-                if pattern.match(temp[7]):
-                        client_ips.append(log.split(" ")[2].split(":")[0])
-                        logs_5xx.append(log)
-        client_ips = list(set(client_ips))
-        last = []
-        for client_ip in client_ips:
-                count = 0
-                for log_5xx in logs_5xx:
-                        temp = log_5xx.split(" ")
-                        if temp[2].split(":")[0] == client_ip:
-                                count += 1
-                last.append([client_ip, str(count)])
-	sort_last = sorted(last, key=lambda x: (int(x[1]), x[0]), reverse=True)
-        print "Sl_No\tClient_Ip\tCount"
-        for i in sort_last:
-                sl_no +=1
-                print str(sl_no) +'\t'+i[0] +'\t'+i[1]
 
 
 #function to print logs with followting fields.
@@ -314,11 +292,11 @@ def parameter_5xx(logs):
                 elb_statuscode.append([temp[11]+" "+temp[12]+" "+temp[13],float(temp[4]),float(temp[5]),float(temp[6]),temp[7]])
         output = code_group(elb_statuscode,1,5,pattern)
         if options.output_file == None:
-                print "Request_Url\tRequest_Processing_Time\tBackend_Processing_Time\tResponse_Processing_Time\tELB_Status_Code\tCount"
+		print "Request_Url\tRequest_Processing_Time\tBackend_Processing_Time\tResponse_Processing_Time\tELB_Status_Code\tCount"
                 for i in output:
-                        print i[0]+'\t'+str(i[1])+'\t'+str(i[2])+'\t'+str(i[3])+'\t'+i[4]+'\t'+str(i[5])+'\t'
+			print i[0]+'\t'+str(i[1])+'\t'+str(i[2])+'\t'+str(i[3])+'\t'+i[4]+'\t'+str(i[5])
         else:
-                with open(options.output_file, "a") as f:
+                with open(working_dir+options.output_file, "w") as f:
                         f.write("Request_Url,Request_Processing_Time,Backend_Processing_Time,Response_Processing_Time,ELB_Status_Code,Count\n")
                         for i in output:
                                 f.write(i[0]+','+str(i[1])+','+str(i[2])+','+str(i[3])+','+i[4]+','+str(i[5])+'\n')
@@ -336,9 +314,9 @@ def parameter_latency(logs):
 	if options.output_file == None:
 		print "Request_Url\tRequest_Processing_Time\tBackend_Processing_Time\tResponse_Processing_Time\tELB_Status_Code\tCount"
 		for i in output:
-			print i[0]+'\t'+str(i[1])+'\t'+str(i[2])+'\t'+str(i[3])+'\t'+i[4]+'\t'+str(i[5])+'\t'
+			print i[0]+'\t'+str(i[1])+'\t'+str(i[2])+'\t'+str(i[3])+'\t'+i[4]+'\t'+str(i[5])
 	else:
-		with open(options.output_file, "a") as f:
+		with open(working_dir+options.output_file, "w") as f:
 			f.write("Request_Url,Request_Processing_Time,Backend_Processing_Time,Response_Processing_Time,ELB_Status_Code,Count\n")
 			for i in output:
 				f.write(i[0]+','+str(i[1])+','+str(i[2])+','+str(i[3])+','+i[4]+','+str(i[5])+'\n')
@@ -350,42 +328,43 @@ def parameter_latency(logs):
 ################################################################################
 
 #Getting elb logs for the time specified
-cross_role = select_client(boto3.client('dynamodb','us-west-2'))
-account_id = cross_role.split(':')[4]
-region = get_region(boto3.client('ec2'))
-assume_role = boto3.client('sts').assume_role(RoleArn=cross_role,RoleSessionName='Demo')
-access_key = assume_role['Credentials']['AccessKeyId']
-secret_key = assume_role['Credentials']['SecretAccessKey']
-session_token = assume_role['Credentials']['SessionToken']
-client = boto3.client('elb',region_name=region,aws_access_key_id=access_key,aws_secret_access_key=secret_key,aws_session_token=session_token)
-log_location = get_elb(client)
-client = boto3.client('s3', aws_access_key_id=access_key,aws_secret_access_key=secret_key,aws_session_token=session_token)
-s3_keys = log_files(client, log_location[0], log_location[1], account_id, region, log_location[2])
-logs = get_logs(client, log_location[0], s3_keys[0], log_location[2], s3_keys[1], s3_keys[2])
+def main():
+	cross_role = select_client(boto3.client('dynamodb','us-west-2'))
+	account_id = cross_role.split(':')[4]
+	region = get_region(boto3.client('ec2'))
+	assume_role = boto3.client('sts').assume_role(RoleArn=cross_role,RoleSessionName='Demo')
+	access_key = assume_role['Credentials']['AccessKeyId']
+	secret_key = assume_role['Credentials']['SecretAccessKey']
+	session_token = assume_role['Credentials']['SessionToken']
+	client = boto3.client('elb',region_name=region,aws_access_key_id=access_key,aws_secret_access_key=secret_key,aws_session_token=session_token)
+	log_location = get_elb(client)
+	client = boto3.client('s3', aws_access_key_id=access_key,aws_secret_access_key=secret_key,aws_session_token=session_token)
+	s3_keys = log_files(client, log_location[0], log_location[1], account_id, region, log_location[2])
+	logs = get_logs(client, log_location[0], s3_keys[0], log_location[2], s3_keys[1], s3_keys[2])
 
-if options.result and options.custom:
-	print "Both custom and result can't use simultaniously"
-elif options.result=='latency' or (not options.result and not options.custom):
-	parameter_latency(logs)
-elif options.result=='5xx':
-	parameter_5xx(logs)
-elif options.result=='4xx':
-	parameter_4xx(logs)
-elif options.custom:
-	a=1
-else:
-	print "Wrong option given."
-	
-	
-#parsing elb logs for the time specified
-#if options.result == '4xx':
-#	list_4xx(logs)
-#elif options.result == '5xx':
-#	list_5xx(logs)
-#elif options.result == 'latency':
-#	list_latency(logs)
-#elif options.result == 'custom'
-#	if options.
+	if options.result and options.custom:
+		print "Both custom and result can't use simultaniously"
+	elif options.result=='latency' or (not options.result and not options.custom):
+		parameter_latency(logs)
+	elif options.result=='5xx':
+		parameter_5xx(logs)
+	elif options.result=='4xx':
+		parameter_4xx(logs)
+	elif options.result=='source_4xx':
+		list_statuscode(logs,re.compile("4[0-9][0-9]"))
+	elif options.result=='source_5xx':
+        	list_statuscode(logs, re.compile("5[0-9][0-9]"))
+	elif options.result=='source_3xx':
+        	list_statuscode(logs,re.compile("3[0-9][0-9]"))
+	elif options.result=='source_2xx':
+        	list_statuscode(logs,re.compile("2[0-9][0-9]"))
+	elif options.result=='invalid':
+        	list_statuscode(logs,re.compile("^-$"))
+	elif options.custom:
+		a=1
+	else:
+		print "Wrong option given."
 
-#else:
-#	exit()
+
+if __name__ == '__main__':
+    main()
