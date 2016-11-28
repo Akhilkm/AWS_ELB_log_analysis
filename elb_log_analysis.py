@@ -219,14 +219,37 @@ def code_group(check_list, group1, group2, pattern):
 	return new_list
 			
 
-#function to print all logs with follwing fields 
-# 1. time stamp 2. client:port 3. backend: port 4. request_processing_time 5. backend processing time 6. response_processing_time
-# 7. elb_status_code 8. backend_status_code 9. request
+#function to print all fields in the log
 def list_all_fields(logs):
-	print "Time_stamp\tclient:port\tbackend:port\tRequest_processing_time\tBackend_processing_time\tResponse_processing_time\tElb_status_code\tBackend_status_code\tRequest"
-	for log in logs:
-		temp = log.split(" ")
-		print temp[0]+'\t'+temp[2]+'\t'+temp[3]+'\t'+temp[4]+'\t'+temp[5]+'\t'+temp[6]+'\t'+temp[7]+'\t'+temp[8]
+	if options.output_file == None:
+		print "Time_stamp\tclient:port\tbackend:port\tRequest_processing_time\tBackend_processing_time\tResponse_processing_time\tElb_status_code\tBackend_status_code\tRequest"
+		for log in logs:
+			temp = log.split(" ")
+			request = '-'
+			user_agent = '-'
+			try:
+				request = re.findall(r'"([^"]*)"', log)[0]
+				user_agent = re.findall(r'"([^"]*)"', log)[1]
+			except:
+				pass
+			ssl_cipher = temp[len(temp)-1]
+			ssl_protocol = temp[len(temp)-2]
+			print temp[0]+'\t'+temp[1]+'\t'+temp[2]+'\t'+temp[3]+'\t'+temp[4]+'\t'+temp[5]+'\t'+temp[6]+'\t'+temp[7]+'\t'+temp[8]+'\t'+temp[9]+'\t'+temp[10]+'\t'+request+'\t'+user_gent+'\t'+ssl_cipher+'\t'+ssl_protocol
+	else:
+		with open(working_dir+options.output_file, "w") as f:
+			f.write("Time_stamp,client:port,backend:port,Request_processing_time,Backend_processing_time,Response_processing_time,Elb_status_code,Backend_status_code,Request\n")
+                	for log in logs:
+                        	temp = log.split(" ")
+				request = '-'
+				user_agent = '-'
+				try:
+                        		request = re.findall(r'"([^"]*)"', log)[0]
+                        		user_agent = re.findall(r'"([^"]*)"', log)[1]
+				except:
+					pass	
+                        	ssl_cipher = temp[len(temp)-1]
+                        	ssl_protocol = temp[len(temp)-2]
+                        	f.write(temp[0]+','+temp[1]+','+temp[2]+','+temp[3]+','+temp[4]+','+temp[5]+','+temp[6]+','+temp[7]+','+temp[8]+','+temp[9]+','+temp[10]+','+request+','+user_agent+','+ssl_cipher+','+ssl_protocol+'\n')
 		
 
 #function to print logs with followting fields.
@@ -349,6 +372,8 @@ def main():
 		parameter_5xx(logs)
 	elif options.result=='4xx':
 		parameter_4xx(logs)
+	elif options.result=='all':
+		list_all_fields(logs)
 	elif options.result=='source_4xx':
 		list_statuscode(logs,re.compile("4[0-9][0-9]"))
 	elif options.result=='source_5xx':
