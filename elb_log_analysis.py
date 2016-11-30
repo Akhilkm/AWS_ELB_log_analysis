@@ -4,7 +4,7 @@
 ##########################################################################################
 
 
-
+import smtplib
 import boto3
 import time
 import os
@@ -12,8 +12,9 @@ import re
 import calendar
 import optparse
 import requests
-
-
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import HTML
 
 working_dir = os.getcwd()+'/'
 
@@ -23,13 +24,23 @@ working_dir = os.getcwd()+'/'
 
 parser = optparse.OptionParser(version = 'elb-log-analysis 1.0.0')
 parser.add_option('-t','--time',dest = 'spec_time', type ='float', help = 'Specify time in hours, fetch logs for last specified hours')
-parser.add_option('-o','--output', dest = 'output_file', type ='string', help = 'Specify the output file name(avoid this option will print the output in cosole)')
-parser.add_option('-r','--result', dest = 'result', type='string',default='latency', help = 'Specify the type of result latency 4xx 5xx source_5xx source_4xx source_3xx source_2xx invalid all')
+parser.add_option('-o','--output', dest = 'output_file', type ='string', help = '''Specify the output file \nname(avoid this option will print the output in cosole)''')
+parser.add_option('-e','--email', dest = 'dest_email', type = 'string', help = 'Specify the destination email address to receive the output, Max 50 fileds will be available')
+parser.add_option('-r','--result', dest = 'result', type='string', help = 'Specify the type of result latency 4xx 5xx source_5xx source_4xx source_3xx source_2xx invalid all')
 parser.add_option('-c','--custom', dest = 'custom', type='string', help = 'Specify the custom columns separated by coma')
 
 (options, args) = parser.parse_args()
 
 
+msg = MIMEMultipart('alternative')
+if options.result:
+	msg['Subject'] = 'Elb log report ' + options.result
+elif options.custom:
+	msg['Subject'] = 'Elb log report ' + options.custom
+else:
+	msg['Subject'] = 'Elb log report latency'
+msg['From'] = 'ms@reancloud.com'
+msg['To'] = options.dest_email
 
 
 ########################################################################
@@ -274,16 +285,23 @@ def list_statuscode(logs, pattern):
 		i.append(country)
 		i.append(org)
 		output.append(i)
-        if options.output_file == None:
+        if options.output_file == None and options.dest_email == None:
                 print "Client_IP\tElb_status_code\tCount\tCountry_Code\tOrganisation"
                 for i in output:
                         print i[0]+'\t'+i[1]+'\t'+str(i[2])+'\t'+i[3]+'\t'+i[4]
-        else:
+        elif options.output_file:
                 with open(working_dir+options.output_file, "w") as f:
                         f.write("Client_IP,Elb_staus_code,Count,Country_code,Organisation\n")
                         for i in output:
                                 f.write(i[0]+','+i[1]+','+str(i[2])+','+i[3]+','+i[4]+'\n')
-
+	else:
+		html = HTML.table(output, header_row = ['Client_IP','Elb_staus_code','Count','Country_code','Organisation'])
+		part1 = MIMEText(html, 'html')
+		msg.attach(part1)
+		options.dest_email
+		s = smtplib.SMTP('localhost')
+		s.sendmail('ms@reancloud.com', options.dest_email, msg.as_string())
+		s.quit()
 
 #sl_no, source_ip, count_4xx group by sourceip and and sort by count
 def parameter_4xx(logs):
@@ -293,16 +311,23 @@ def parameter_4xx(logs):
                 temp = log.split(" ")
                 elb_statuscode.append([temp[11]+" "+temp[12]+" "+temp[13],float(temp[4]),float(temp[5]),float(temp[6]),temp[7]])
         output = code_group(elb_statuscode,1,5,pattern)
-        if options.output_file == None:
+        if options.output_file == None and options.dest_email == None:
                 print "Request_Url\tRequest_Processing_Time\tBackend_Processing_Time\tResponse_Processing_Time\tELB_Status_Code\tCount"
                 for i in output:
                         print i[0]+'\t'+str(i[1])+'\t'+str(i[2])+'\t'+str(i[3])+'\t'+i[4]+'\t'+str(i[5])
-        else:
+        elif options.output_file:
                 with open(working_dir+options.output_file, "w") as f:
                         f.write("Request_Url,Request_Processing_Time,Backend_Processing_Time,Response_Processing_Time,ELB_Status_Code,Count\n")
                         for i in output:
                                 f.write(i[0]+','+str(i[1])+','+str(i[2])+','+str(i[3])+','+i[4]+','+str(i[5])+'\n')
-
+	else:
+		html = HTML.table(output, header_row = ['Request_Url','Request_Processing_Time','Backend_Processing_Time','Response_Processing_Time','ELB_Status_Code','Count'])
+		part1 = MIMEText(html, 'html')
+		msg.attach(part1)
+		options.dest_email
+		s = smtplib.SMTP('localhost')
+		s.sendmail('ms@reancloud.com', options.dest_email, msg.as_string())
+		s.quit()
 
 #function to print logs with followting fields.
 #sl_no, source_ip, count_5xx group by sourceip and and sort by count
@@ -313,17 +338,23 @@ def parameter_5xx(logs):
                 temp = log.split(" ")
                 elb_statuscode.append([temp[11]+" "+temp[12]+" "+temp[13],float(temp[4]),float(temp[5]),float(temp[6]),temp[7]])
         output = code_group(elb_statuscode,1,5,pattern)
-        if options.output_file == None:
+        if options.output_file == None and options.dest_email == None:
 		print "Request_Url\tRequest_Processing_Time\tBackend_Processing_Time\tResponse_Processing_Time\tELB_Status_Code\tCount"
                 for i in output:
 			print i[0]+'\t'+str(i[1])+'\t'+str(i[2])+'\t'+str(i[3])+'\t'+i[4]+'\t'+str(i[5])
-        else:
+        elif options.output_file:
                 with open(working_dir+options.output_file, "w") as f:
                         f.write("Request_Url,Request_Processing_Time,Backend_Processing_Time,Response_Processing_Time,ELB_Status_Code,Count\n")
                         for i in output:
                                 f.write(i[0]+','+str(i[1])+','+str(i[2])+','+str(i[3])+','+i[4]+','+str(i[5])+'\n')
-
-
+	else:
+		html = HTML.table(output, header_row = ['Request_Url','Request_Processing_Time','Backend_Processing_Time','Response_Processing_Time','ELB_Status_Code','Coiunt'])
+		part1 = MIMEText(html, 'html')
+		msg.attach(part1)
+		options.dest_email
+		s = smtplib.SMTP('localhost')
+		s.sendmail('ms@reancloud.com', options.dest_email, msg.as_string())
+		s.quit()
 
 #function to print logs with following fields.
 #Sl_no, request_time, back_time, resp_time
@@ -333,22 +364,77 @@ def parameter_latency(logs):
 		temp = log.split(" ")
 		latency.append([temp[11]+" "+temp[12]+" "+temp[13],float(temp[4]),float(temp[5]),float(temp[6]),temp[7]])
 	output = sort_group(latency,3,1)
-	if options.output_file == None:
+	if options.output_file == None and options.dest_email == None:
 		print "Request_Url\tRequest_Processing_Time\tBackend_Processing_Time\tResponse_Processing_Time\tELB_Status_Code\tCount"
 		for i in output:
 			print i[0]+'\t'+str(i[1])+'\t'+str(i[2])+'\t'+str(i[3])+'\t'+i[4]+'\t'+str(i[5])
-	else:
+	elif options.output_file:
 		with open(working_dir+options.output_file, "w") as f:
 			f.write("Request_Url,Request_Processing_Time,Backend_Processing_Time,Response_Processing_Time,ELB_Status_Code,Count\n")
 			for i in output:
 				f.write(i[0]+','+str(i[1])+','+str(i[2])+','+str(i[3])+','+i[4]+','+str(i[5])+'\n')
-	
-	
+	else:
+		html = HTML.table(output, header_row = ['Request_Url','Request_Processing_Time','Backend_Processing_Time','Response_Processing_Time','ELB_Status_Code','Count'])
+		part1 = MIMEText(html, 'html')
+		msg.attach(part1)
+		options.dest_email
+		s = smtplib.SMTP('localhost')
+		s.sendmail('ms@reancloud.com', options.dest_email, msg.as_string())
+		s.quit()
+
+#function to return an elb headding child funtion fro list_custom
+def elb_headding(fields):
+	headding = []
+	for field in fields:
+		a = {
+                	1 : 'Timestamp',
+                	2 : 'ELB_Name',
+                	3 : 'Client',
+                	4 : 'Backend:prot',
+                	5 : 'Request_processing_time',
+                	6 : 'Backend_processing_time',
+                	7 : 'Response_processing_time',
+                	8 : 'ELB_status_code',
+                	9 : 'Backend_status_code',
+                	10 : 'Received_Bytes',
+                	11 : 'Sent Bytes',
+                	12 : 'Request',
+                	13 : 'User_Agent',
+                	14 : 'SSL_cipher',
+			15 : 'SSL_protocol'
+		}[int(field)]
+		headding.append(a)
+	return headding
+
+#function to list custom fields
+def list_custom(logs,fields):
+	fields = fields.split(',')
+	req_output = []
+	for log in logs:
+		temp_output = []
+		temp = log.split(' ')
+		request = '-'
+		user_agent = '-'
+		try:
+			request = re.findall(r'"([^"]*)"', log)[0]
+			user_agent = re.findall(r'"([^"]*)"', log)[1]
+		except:
+			pass
+		ssl_cipher = temp[len(temp)-1]
+		ssl_protocol = temp[len(temp)-2]
+		del temp[11:len(temp)]
+		temp.append(request);temp.append(user_agent);temp.append(ssl_cipher);temp.append(ssl_protocol)
+		headding = elb_headding(fields)
+		for field in fields:
+			temp_output.append(temp[int(field)-1])
+		req_output.append(temp_output)
+	req_output.insert(0,headding)
+	return req_output
+
 
 ################################################################################
 #                             main function                                    # 
 ################################################################################
-
 #Getting elb logs for the time specified
 def main():
 	cross_role = select_client(boto3.client('dynamodb','us-west-2'))
@@ -385,7 +471,7 @@ def main():
 	elif options.result=='invalid':
         	list_statuscode(logs,re.compile("^-$"))
 	elif options.custom:
-		a=1
+		list_custom(logs,options.custom)
 	else:
 		print "Wrong option given."
 

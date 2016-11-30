@@ -1,8 +1,0 @@
-a = requests.get('http://ipinfo.io/163.172.130.195')
-a=a.json()
-print a['country']
-print a['org']
-
-
-
-

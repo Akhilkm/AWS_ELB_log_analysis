@@ -1,5 +1,7 @@
 import optparse
 
+
+
 def fib(n, prin):
         a,b = 0,1
         for i in range(n):
@@ -9,7 +11,7 @@ def fib(n, prin):
         return a
 def Main():
         parser = optparse.OptionParser('usage %prog '+\
-                        '-n <fib number> -o <output file> -a (print all)', version = "%prog 1,0", epilog="Examples:\n check_dell -c all check_dell -c fans memory voltage check_dell -s")
+                        '-n <fib number> -o <output file> -a (print all)', version = "%prog 1,0", epilog="""Examples:\n check_dell -c all check_dell -c fans memory voltage check_dell -s""")
         parser.add_option('-n','--number',dest = 'num', type ='int',\
                         default = 5,help="specify the n''thnfibonacci \n number to output")
         parser.add_option('-o', dest = 'out', type='string', \
