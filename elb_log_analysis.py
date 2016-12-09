@@ -153,7 +153,7 @@ def log_files(client, s3_name, s3_prefix, account_id,region, elb_name):
 	else:
 		start = time.strftime('%Y/%m/%d %H:%M:%S', time.gmtime(time.time()-3600*options.spec_time))
 		end = time.strftime('%Y/%m/%d %H:%M:%S', time.gmtime(time.time()))
-	temp_end = time.strftime('%Y/%m/%d %H:%M:%S',  time.gmtime((int(calendar.timegm(time.strptime(end, pattern)))+3600)))
+	temp_end = time.strftime('%Y/%m/%d %H:%M:%S',  time.gmtime((int(calendar.timegm(time.strptime(end, pattern)))+7200)))
 	if s3_prefix:
 		log_prefix = log_path(s3_prefix+'/AWSLogs/'+account_id+'/elasticloadbalancing/'+region+'/', start, temp_end)
 	else:
@@ -168,8 +168,6 @@ def log_files(client, s3_name, s3_prefix, account_id,region, elb_name):
 #function to downlod s3 logs to a file and will return logs as a list
 def get_logs(client, s3_name, s3_keys, elb_name, start, end):
 	logs = []
-	if len(s3_keys) == 0:
-		print "No logs are generated during the time frame"
 	if os.path.isfile("file.log"):
 		os.remove("file.log")
 	for key in s3_keys:
@@ -178,9 +176,12 @@ def get_logs(client, s3_name, s3_keys, elb_name, start, end):
 	with open('file.log','rb') as data:
 		for line in data:
 			temp = line.split(" ")
-			temp_time = temp[0].split('T')[0].replace('-','/') + ' '+ temp[0].split('T')[1].replace("Z","").split('.')[0]
-			if temp_time > time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(time.time()-7200)) and elb_name == temp[1]:
-				logs.append(line)
+			try:
+				temp_time = temp[0].split('T')[0].replace('-','/') + ' '+ temp[0].split('T')[1].replace("Z","").split('.')[0]
+				if temp_time >= start and temp_time <= end and elb_name == temp[1]:
+					logs.append(line)
+			except:
+				continue
 	os.remove('file.log')
 	if len(logs) == 0:
 		print "No logs are generated during the time frame"
@@ -233,7 +234,7 @@ def code_group(check_list, group1, group2, pattern):
 #function to print all fields in the log
 def list_all_fields(logs):
 	if options.output_file == None:
-		print "Time_stamp\tclient:port\tbackend:port\tRequest_processing_time\tBackend_processing_time\tResponse_processing_time\tElb_status_code\tBackend_status_code\tRequest"
+		print "Time_stamp\tclient:port\tbackend:port\tRequest_processing_time\tBackend_processing_time\tResponse_processing_time\tElb_status_code\tBackend_status_code\treceived_bytes\tsent_bytes\tRequest\tUser_agent\tssl_cipher\tssl_protocol"
 		for log in logs:
 			temp = log.split(" ")
 			request = '-'
@@ -245,10 +246,10 @@ def list_all_fields(logs):
 				pass
 			ssl_cipher = temp[len(temp)-1]
 			ssl_protocol = temp[len(temp)-2]
-			print temp[0]+'\t'+temp[1]+'\t'+temp[2]+'\t'+temp[3]+'\t'+temp[4]+'\t'+temp[5]+'\t'+temp[6]+'\t'+temp[7]+'\t'+temp[8]+'\t'+temp[9]+'\t'+temp[10]+'\t'+request+'\t'+user_gent+'\t'+ssl_cipher+'\t'+ssl_protocol
+			print temp[0]+'\t'+temp[1]+'\t'+temp[2]+'\t'+temp[3]+'\t'+temp[4]+'\t'+temp[5]+'\t'+temp[6]+'\t'+temp[7]+'\t'+temp[8]+'\t'+temp[9]+'\t'+temp[10]+'\t'+request+'\t'+user_agent+'\t'+ssl_cipher+'\t'+ssl_protocol
 	else:
 		with open(working_dir+options.output_file, "w") as f:
-			f.write("Time_stamp,client:port,backend:port,Request_processing_time,Backend_processing_time,Response_processing_time,Elb_status_code,Backend_status_code,Request\n")
+			f.write("Time_stamp\tclient:port\tbackend:port\tRequest_processing_time\tBackend_processing_time\tResponse_processing_time\tElb_status_code\tBackend_status_code\treceived_bytes\tsent_bytes\tRequest\tUser_agent\tssl_cipher\tssl_protocol")
                 	for log in logs:
                         	temp = log.split(" ")
 				request = '-'
@@ -260,7 +261,7 @@ def list_all_fields(logs):
 					pass	
                         	ssl_cipher = temp[len(temp)-1]
                         	ssl_protocol = temp[len(temp)-2]
-                        	f.write(temp[0]+','+temp[1]+','+temp[2]+','+temp[3]+','+temp[4]+','+temp[5]+','+temp[6]+','+temp[7]+','+temp[8]+','+temp[9]+','+temp[10]+','+request+','+user_agent+','+ssl_cipher+','+ssl_protocol+'\n')
+                        	f.write(temp[0]+','+temp[1]+','+temp[2]+','+temp[3]+','+temp[4]+','+temp[5]+','+temp[6]+','+temp[7]+','+temp[8]+','+temp[9]+','+temp[10]+','+request+','+user_agent+','+ssl_protocol+ssl_cipher)
 		
 
 #function to print logs with followting fields.
