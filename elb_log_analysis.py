@@ -504,21 +504,27 @@ def list_custom(logs,fields):
 		del temp[11:len(temp)]
 		temp.append(request);temp.append(user_agent);temp.append(ssl_cipher);temp.append(ssl_protocol)
 		client_ip = temp[2].split(':')[0]
-		client_port = temp[2].split(':')[1]
+		client_port = '-'
+		try:
+			client_port = temp[2].split(':')[1]
+		except:
+			pass
 		temp[2] = client_ip
 		temp.insert(3, client_port)
                 backend_ip = temp[4].split(':')[0]
-                backend_port = temp[4].split(':')[1]
+		backend_port = '-'
+                try:
+			backend_port = temp[4].split(':')[1]
+		except:
+			pass
                 temp[4] = backend_ip
                 temp.insert(5, backend_port)
 		headding = elb_headding(fields)
-		if '18' in fields or '17' in fields:
+		if '18' in fields or '19' in fields:
 			country = '-'
 			org = '-'
 			try:
-				print time.time()
 				a = requests.get('http://ipinfo.io/'+client_ip).json()
-				print time.time()
 				temp.append(a['country'])
 				temp.append(a['org'])
 			except:
